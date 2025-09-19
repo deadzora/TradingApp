@@ -1,0 +1,144 @@
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RiskyBot</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* prevent the chart from stretching */
+    #equityChart { height: 320px !important; }
+    .scroll { max-height: 360px; overflow: auto; }
+    header { display:flex; justify-content:space-between; align-items:center; padding:16px; border-bottom:1px solid #1f2a37; }
+    .meta { display:flex; gap:16px; color:#90a4b8; }
+    .card { margin:16px; padding:16px; background:#121821; border-radius:12px; }
+    .list { list-style:none; padding:0; margin:0; }
+    .row { display:flex; gap:8px; align-items:center; justify-content:space-between; }
+    .badge { background:#60a5fa; color:#001123; padding:2px 8px; border-radius:999px; font-weight:600; font-size:12px; }
+    .dim { color:#90a4b8; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RiskyBot</h1>
+    <div class="meta">
+      <div>Equity: <strong id="equityVal">{{ "%.2f"|format(latest_equity) if latest_equity else "—" }}</strong></div>
+      <div>Savings: <strong id="savingsVal">{{ "%.2f"|format(latest_savings) }}</strong></div>
+    </div>
+  </header>
+
+  <section class="card">
+  <h2>Equity Curve</h2>
+  <canvas id="equityChart" height="320"></canvas>
+  <div id="equityTotals" class="dim" style="margin-top:8px;">
+    Equity: <strong id="equityValInCard">—</strong> ·
+    Savings: <strong id="savingsValInCard">—</strong>
+  </div>
+</section>
+
+  <section class="card">
+    <h2>Latest Decisions</h2>
+    <div class="scroll">
+      <ul id="decisionsList" class="list">
+        {% for d in decisions %}
+          <li>
+            <div class="row">
+              <span class="badge">{{ d.get("final_action","HOLD") }}</span>
+              <strong>{{ d.get("symbol","") }}</strong>
+              <span class="dim">{{ d.get("ts","") }}</span>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </section>
+
+<script>
+let chart;
+
+function renderEquity(rows, cap=300) {
+  const slice = rows.slice(-cap);
+  const labels = slice.map(d => d.ts);
+  const eq = slice.map(d => d.equity);
+  const sav = slice.map(d => d.savings || 0);
+
+  // Compute a tight y-range
+  const allVals = [...eq, ...sav].filter(v => typeof v === 'number' && isFinite(v));
+  const ymin = allVals.length ? Math.min(...allVals) : 0;
+  const ymax = allVals.length ? Math.max(...allVals) : 1;
+  const pad = (ymax - ymin) * 0.05 || 1;
+
+  const ctx = document.getElementById('equityChart').getContext('2d');
+  if (chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Equity', data: eq, fill: false },
+        { label: 'Savings', data: sav, fill: false }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      scales: {
+        y: {
+          suggestedMin: ymin - pad,
+          suggestedMax: ymax + pad,
+          ticks: { callback: (v) => Number(v).toFixed(0) }
+        }
+      }
+    }
+  });
+}
+
+function renderDecisions(data, cap=150) {
+  const list = document.getElementById('decisionsList');
+  const slice = data.slice(0, cap); // API is newest-first
+  list.innerHTML = slice.map(d => `
+    <li>
+      <div class="row">
+        <span class="badge">${d.final_action || 'HOLD'}</span>
+        <strong>${d.symbol || ''}</strong>
+        <span class="dim">${d.ts || ''}</span>
+      </div>
+    </li>
+  `).join('');
+}
+
+async function refresh() {
+  try {
+    const [eqResp, decResp] = await Promise.all([
+      fetch('/api/equity'),
+      fetch('/api/decisions')
+    ]);
+    const eqPayload = await eqResp.json();   // { rows: [...], latest: {...} }
+    const dec = await decResp.json();        // newest-first
+
+    const rows = eqPayload.rows || [];
+    renderEquity(rows, 300);
+    renderDecisions(dec, 150);
+
+    // Update totals (header + card)
+    const latest = eqPayload.latest || {};
+    const eqVal = typeof latest.equity === 'number' ? latest.equity : 0;
+    const savVal = typeof latest.savings === 'number' ? latest.savings : 0;
+
+    document.getElementById('equityVal').textContent = eqVal ? eqVal.toFixed(2) : '—';
+    document.getElementById('savingsVal').textContent = savVal ? savVal.toFixed(2) : '0.00';
+    document.getElementById('equityValInCard').textContent = eqVal ? eqVal.toFixed(2) : '—';
+    document.getElementById('savingsValInCard').textContent = savVal ? savVal.toFixed(2) : '0.00';
+  } catch (e) {
+    // ignore transient errors
+  }
+}
+
+// initial + 10s refresh
+refresh();
+setInterval(refresh, 10000);
+</script>
+
+</body>
+</html>

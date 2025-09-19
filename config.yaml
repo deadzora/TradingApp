@@ -1,0 +1,70 @@
+# --- Mode & cadence ---
+mode: "paper"
+loop_sleep_seconds: 900        # 15 minutes; set to 60 while testing
+
+# Scale all equity math and the dashboard display
+# Example: 100,000 (paper) * 0.001 = effective 100
+equity_scale: 0.001
+
+# --- Providers & routing ---
+providers:
+  broker: ["alpaca"]
+  data: ["alpaca_data"]        # keep yfinance out for now; add later if desired
+
+routing:
+  default:
+    broker: "alpaca"
+    data: "alpaca_data"
+
+# --- Static universe (always included) ---
+universe:
+  equities: ["SPY", "QQQ", "AAPL", "NVDA", "MSFT"]
+  crypto: []
+
+# --- Dynamic discovery feed (from scanner.py) ---
+discovery:
+  max_feed: 50                 # how many dynamic symbols to accept into the loop
+
+# --- Portfolio & risk ---
+portfolio:
+  top_k: 3
+  weighting: "equal"           # or "risk"
+  max_positions: 6
+
+risk:
+  per_trade_risk_fraction: 0.02
+  max_concurrent_trades: 6
+  max_crypto_exposure_fraction: 0.00
+  daily_loss_limit_fraction: 0.03
+
+# --- Stops & targets ---
+stops_targets:
+  stop_fraction: 0.01
+  take_fraction: 0.02
+  use_trailing: false
+
+# --- Scoring ---
+scoring:
+  min_score_to_trade: 50
+  weights:
+    momentum: 40
+    liquidity: 20
+    theme: 20
+    sentiment: 20
+
+# --- Bandit (learning scaffold) ---
+bandit:
+  epsilon_start: 0.15
+  epsilon_floor: 0.03
+  epsilon_decay_per_day: 0.03
+
+# --- Paths ---
+paths:
+  data_dir: "./data"
+  logs_dir: "./logs"
+  model_dir: "./bot/models"
+
+# --- Alpaca endpoints ---
+alpaca:
+  paper_base_url: "https://paper-api.alpaca.markets"
+  live_base_url: "https://api.alpaca.markets"

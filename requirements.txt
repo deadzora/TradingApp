@@ -1,0 +1,12 @@
+# Core (choose wheels that exist for your Python)
+numpy==2.1.1; python_version >= "3.12"
+numpy==1.26.4; python_version < "3.12"
+pandas==2.2.2
+yfinance==0.2.43
+
+# Broker + web
+alpaca-trade-api==3.2.0
+requests==2.32.3
+pyyaml==6.0.1
+Flask==3.0.3
+certifi>=2024.7.4
