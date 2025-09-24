@@ -1,0 +1,29 @@
+# swarms/config.yaml
+runtime:
+  cadence_seconds: 60        # how often each agent scans
+  log_dir: "./logs"
+
+universe:
+  equities_base: ["SPY","QQQ","AAPL","MSFT","NVDA"]  # seed if an agent needs a default
+  crypto_base:   ["BTCUSD","ETHUSD"]
+
+risk:
+  max_positions_total: 10
+  max_positions_per_agent: 4
+  per_trade_risk_fraction: 0.01     # of equity
+  per_day_loss_limit_fraction: 0.05
+  equity_scale: 1.0
+  min_qty: 1
+  ban_list: []                      # symbols we never touch
+
+orchestrator:
+  min_score_to_trade: 60            # 0–100 combined score
+  max_new_trades_per_cycle: 3
+  boost_if_multi_agent_agree: 10    # points
+  penalty_if_conflict: 15
+
+order_defaults:
+  stop_fraction: 0.01               # 1% stop
+  take_fraction: 0.02               # 2% take
+  entry_slop_fraction: 0.005        # marketable limit nudge
+  tif: "gtc"
