@@ -1,6 +1,6 @@
 # --- Mode & cadence ---
 mode: "paper"
-loop_sleep_seconds: 900        # 15 minutes; set to 60 while testing
+loop_sleep_seconds: 60        # 15 minutes; set to 60 while testing
 
 # Scale all equity math and the dashboard display
 # Example: 100,000 (paper) * 0.001 = effective 100
@@ -9,7 +9,7 @@ equity_scale: 0.001
 # --- Providers & routing ---
 providers:
   broker: ["alpaca"]
-  data: ["alpaca_data"]        # keep yfinance out for now; add later if desired
+  data: ["alpaca_data", "yfinance"]        # keep yfinance out for now; add later if desired
 
 routing:
   default:
@@ -27,15 +27,17 @@ discovery:
 
 # --- Portfolio & risk ---
 portfolio:
-  top_k: 3
+  top_k: 5
   weighting: "equal"           # or "risk"
   max_positions: 6
+  
 
 risk:
-  per_trade_risk_fraction: 0.02
+  per_trade_risk_fraction: 0.01
   max_concurrent_trades: 6
   max_crypto_exposure_fraction: 0.00
-  daily_loss_limit_fraction: 0.03
+  daily_loss_limit_fraction: 0.05
+  min_qty: 1     # add this line alongside your other risk keys
 
 # --- Stops & targets ---
 stops_targets:
@@ -45,18 +47,22 @@ stops_targets:
 
 # --- Scoring ---
 scoring:
-  min_score_to_trade: 50
+  min_score_to_trade: 25
   weights:
     momentum: 40
     liquidity: 20
     theme: 20
     sentiment: 20
 
+data:
+  min_rows_15m: 60
+  min_rows_1d: 120
+
 # --- Bandit (learning scaffold) ---
 bandit:
-  epsilon_start: 0.15
-  epsilon_floor: 0.03
-  epsilon_decay_per_day: 0.03
+  epsilon_start: 0.35
+  epsilon_floor: 0.05
+  epsilon_decay_per_day: 0.05
 
 # --- Paths ---
 paths:

@@ -1,8 +1,8 @@
-# bot/providers/alpaca_broker.py
+# bot/providers/alpaca.py
 from __future__ import annotations
 
 import os
-from typing import Optional, Any
+from typing import Optional
 
 try:
     from alpaca_trade_api import REST
@@ -12,46 +12,23 @@ except Exception as _imp_err:
 
 
 class AlpacaBroker:
-    def __init__(self, *args: Any, base_url: Optional[str] = None, **kwargs: Any):
+    def __init__(self, *args, base_url: Optional[str] = None, **kwargs):
         """
-        Flexible constructor so registry calls like AlpacaBroker(cfg) don't break.
-        Resolves base_url from:
-          1) explicit base_url arg
-          2) cfg (if passed as first positional arg) using mode (paper/live)
-          3) APCA_API_BASE_URL env var
-          4) paper default
+        Flexible signature so registry calls like AlpacaBroker(cfg=...) don't crash.
+        Respects APCA_API_BASE_URL if base_url isn't passed.
         """
         if REST is None:
             raise RuntimeError(
-                f"alpaca-trade-api import failed in this venv. "
+                f"alpaca-trade-api import failed. Ensure it's installed in THIS venv. "
                 f"Underlying error: {_ALPACA_IMPORT_ERR!r}"
             )
 
         key = os.getenv("APCA_API_KEY_ID")
         sec = os.getenv("APCA_API_SECRET_KEY")
+        base = base_url or os.getenv("APCA_API_BASE_URL") or "https://paper-api.alpaca.markets"
+
         if not key or not sec:
             raise RuntimeError("Missing APCA_API_KEY_ID / APCA_API_SECRET_KEY in environment.")
-
-        # 1) explicit
-        base = base_url
-
-        # 2) derive from cfg if first arg looks like your config dict
-        if base is None and args and isinstance(args[0], dict):
-            cfg = args[0]
-            try:
-                mode = str(cfg.get("mode", "paper")).lower()
-                alp = (cfg.get("alpaca") or {})
-                base = alp.get("paper_base_url") if mode == "paper" else alp.get("live_base_url")
-            except Exception:
-                pass
-
-        # 3) env
-        if base is None:
-            base = os.getenv("APCA_API_BASE_URL")
-
-        # 4) fallback
-        if base is None:
-            base = "https://paper-api.alpaca.markets"
 
         self.api = REST(key, sec, base_url=base, api_version="v2")
 
