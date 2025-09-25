@@ -1,12 +1,24 @@
 # Core (choose wheels that exist for your Python)
 numpy==2.1.1; python_version >= "3.12"
 numpy==1.26.4; python_version < "3.12"
+tzdata>=2024.1          # Windows timezone DB for pandas
 pandas==2.2.2
-yfinance==0.2.43
-
-# Broker + web
-alpaca-trade-api==3.2.0
-requests==2.32.3
-pyyaml==6.0.1
 Flask==3.0.3
 certifi>=2024.7.4
+
+# Config & env
+pyyaml==6.0.1
+python-dotenv>=1.0.1
+
+
+# HTTP / data sources
+yfinance==0.2.43
+requests==2.32.3
+
+# Alpaca SDK (trading + market data)
+alpaca-trade-api==3.2.0
+
+# OpenAI + Agents SDK
+openai>=1.45.0
+openai-agents>=0.2.0
+
