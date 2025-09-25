@@ -31,6 +31,21 @@ from pydantic import BaseModel, Field, conint
 # your existing broker wrapper
 from bot.providers.alpaca_broker import AlpacaBroker
 
+# === (ADDED) external intel sources & scoring ===
+# swarms/tools/sources.py: fetch_alpaca_news, fetch_reddit_mentions
+# swarms/tools/scoring.py: score_attention, score_news, fuse_scores
+try:
+    import pandas as pd
+    from swarms.tools.sources import fetch_alpaca_news, fetch_reddit_mentions
+    from swarms.tools.scoring import score_attention, score_news, fuse_scores
+except Exception:
+    pd = None
+    fetch_alpaca_news = None
+    fetch_reddit_mentions = None
+    score_attention = None
+    score_news = None
+    fuse_scores = None
+
 # ---- config knobs ----
 DRY_RUN = True                     # set to False to actually place orders via paper broker
 CADENCE_SECONDS = 60               # run cadence if you loop this; this file runs once
@@ -102,7 +117,7 @@ def get_basic_volatility(symbol: str) -> float:
         if len(bars) < 10:
             return 0.0
         s = 0.0; n = 0
-        for b in bars[-30:]:
+        for b in bars[-30:] if len(bars) >= 30 else bars:
             c = float(b["c"]); h = float(b["h"]); l = float(b["l"])
             if c > 0:
                 s += (h - l) / c
@@ -164,6 +179,36 @@ ONLY = set((os.getenv("SWARM_ONLY") or "").split(",")) - {""}
 if ONLY:
     AGENTS = [(n, a) for (n, a) in AGENTS if n in ONLY]
 
+# ===== (ADDED) external intel wiring =====
+def gather_external_signals(tickers: list[str]):
+    """
+    Pull Alpaca News + Reddit mentions, score/merge, return DataFrame with ['ticker','score','why'].
+    Soft-fails to empty frame if sources/scoring are unavailable.
+    """
+    if not (pd and fetch_alpaca_news and fetch_reddit_mentions and score_attention and score_news and fuse_scores):
+        return pd.DataFrame(columns=["ticker","score","why"]) if pd else None
+    try:
+        news_df = fetch_alpaca_news(tickers, since_minutes=360, limit=200)
+        reddit_df = fetch_reddit_mentions(window_h=6)
+        attn = score_attention(reddit_df.query("ticker in @tickers")) if not reddit_df.empty else None
+        news = score_news(news_df) if not news_df.empty else None
+        fused = fuse_scores(attn, news, liq=None)
+        # ensure expected columns
+        keep = [c for c in ["ticker","score","why"] if c in fused.columns]
+        return fused[keep].sort_values("score", ascending=False) if not fused.empty else fused
+    except Exception:
+        return pd.DataFrame(columns=["ticker","score","why"]) if pd else None
+
+def _signals_map(df) -> tuple[dict, dict]:
+    """
+    Convenience: maps for quick lookup -> (score_map, why_map)
+    """
+    if df is None or df is pd.DataFrame() or (hasattr(df, "empty") and df.empty):
+        return {}, {}
+    score_map = {str(r["ticker"]).upper(): float(r["score"]) for _, r in df.iterrows() if "ticker" in r and "score" in r}
+    why_map = {str(r["ticker"]).upper(): str(r.get("why","")) for _, r in df.iterrows() if "ticker" in r}
+    return score_map, why_map
+
 # ===== simple coordinator =====
 def combine_proposals(all_props: List[Proposal]) -> List[Proposal]:
     """
@@ -198,22 +243,68 @@ async def run_once():
 
     universe = ["SPY","QQQ","AAPL","MSFT","NVDA","AMD","META","TSLA","COIN","IWM","AVGO","GOOGL"]
 
+    # === (ADDED) pull external signals and print top-5
+    signals = gather_external_signals(universe)
+    score_map, why_map = _signals_map(signals) if pd else ({}, {})
+    if signals is not None and hasattr(signals, "empty") and not signals.empty:
+        try:
+            top5 = signals.head(5)[["ticker","score"]].to_string(index=False)
+            print(f"[intel] external signals top5:\n{top5}")
+        except Exception:
+            pass
+
+    # Build a short intel context for the LLM (top reasons only, to keep cost low)
+    intel_lines = []
+    if signals is not None and hasattr(signals, "empty") and not signals.empty:
+        for _, r in signals.head(6).iterrows():
+            tkr = str(r.get("ticker","")).upper()
+            why = str(r.get("why",""))[:160]
+            sc = int(round(float(r.get("score", 0))))
+            intel_lines.append(f"- {tkr} (score {sc}): {why}")
+    intel_block = "\n".join(intel_lines) if intel_lines else ""
+
     all_props: List[Proposal] = []
     for name, agent in AGENTS:
         prompt = (
             f"Universe: {', '.join(universe)}.\n"
-            f"Return up to {MAX_PROPOSALS_PER_AGENT} proposals as structured output."
+            f"Return up to {MAX_PROPOSALS_PER_AGENT} proposals as structured output.\n"
         )
+        # (ADDED) pass the intel reasons into the agent context
+        if intel_block:
+            prompt += (
+                "\nRecent external signals to consider (news/social):\n"
+                f"{intel_block}\n"
+                "Prefer symbols listed above; weigh higher scores more strongly.\n"
+            )
+
         res = await Runner.run(agent, input=prompt)
         props = (getattr(res, "final_output", None).proposals if getattr(res, "final_output", None) else []) or []
-        # Ensure agent field is set
+
+        # Ensure agent field + (ADDED) boost confidence by signals + append intel why
+        boosted_props: List[Proposal] = []
         for p in props:
             if not p.agent:
                 p.agent = name
-        print(f"[{name}] {len(props)} proposal(s)")
-        for p in props:
+            sym = p.symbol.upper()
+            # boost confidence from signals score
+            try:
+                sc = float(score_map.get(sym, 0.0))
+                if sc:
+                    boost = int(max(-10, min(15, round((sc - 50.0) / 2.0))))
+                    p.confidence = int(max(1, min(100, p.confidence + boost)))
+                    why = (why_map.get(sym, "") or "").strip()
+                    if why:
+                        # keep thesis compact; add intel tag
+                        p.thesis = (p.thesis + f" | intel: {why}")[:400]
+            except Exception:
+                pass
+
+            boosted_props.append(p)
+
+        print(f"[{name}] {len(boosted_props)} proposal(s)")
+        for p in boosted_props:
             print(f"  - {p.symbol} @{p.entry:.2f} SL {p.stop:.2f} TP {p.take:.2f} conf={p.confidence}")
-        all_props.extend(props)
+        all_props.extend(boosted_props)
 
     merged = combine_proposals(all_props)
     if not merged:
