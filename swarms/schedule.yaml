@@ -1,0 +1,26 @@
+timezone: America/New_York
+
+daytrade:
+  run_at: ["09:40","10:30","13:00","15:10"]   # RTH-only pulses
+  rth_only: true
+  cooldown_min: 20
+
+options:
+  run_at: ["09:10","12:50"]
+  rth_only: true
+  cooldown_min: 60
+
+penny:
+  windows:
+    - every: "60m"            # balanced: hourly in AM block
+      between: ["09:45","13:00"]
+    - every: "60m"            # one more pulse in PM
+      between: ["14:00","15:30"]
+  rth_only: true
+  cooldown_min: 30
+
+crypto:
+  every: "120m"               # 24/7
+  extra_at: ["08:00","12:00","16:00","20:00"]  # additive pulses
+  rth_only: false
+  cooldown_min: 30

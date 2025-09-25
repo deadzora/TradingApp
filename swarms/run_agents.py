@@ -160,6 +160,10 @@ AGENTS = [
     ("crypto",   make_agent("crypto",   CRYPTO_INSTRUCTIONS)),
 ]
 
+ONLY = set((os.getenv("SWARM_ONLY") or "").split(",")) - {""}
+if ONLY:
+    AGENTS = [(n, a) for (n, a) in AGENTS if n in ONLY]
+
 # ===== simple coordinator =====
 def combine_proposals(all_props: List[Proposal]) -> List[Proposal]:
     """
@@ -241,5 +245,9 @@ async def run_once():
 
     print(f"[orders] placed={placed}")
 
-if __name__ == "__main__":
+def main_entry_once():
+    import asyncio
     asyncio.run(run_once())
+
+if __name__ == "__main__":
+    main_entry_once()
