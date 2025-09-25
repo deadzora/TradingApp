@@ -1,3 +1,15 @@
 # local secrets
 
 .env
+
+# venvs
+.venv/
+venv/
+
+# logs and Data
+logs/
+data/equity.csv
+data/decisions.jsonl
+data/universe_dynamic.json
+_pycache_/
+*.pyc
